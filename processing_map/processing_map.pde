@@ -1,5 +1,10 @@
 import processing.serial.*;
 import ddf.minim.*;
+import java.nio.file.*;
+
+
+String source = "/home/c/Documents/mytherella/seed_img/";
+String dest = "/home/c/Documents/mytherella/projector/seed/";
 
 Serial myPort;  // Create object from Serial class
 String val;     // Data received from the serial port
@@ -45,8 +50,8 @@ int last_image_id = -1;
 boolean gainShifting = false;
 
 void setup() {
-  //size(1920, 1080);
-  fullScreen();
+  size(1920, 1080);
+  //fullScreen();
   background(255);
   // I know that the first port in the serial list on my mac
   // is Serial.list()[0].
@@ -115,15 +120,15 @@ void draw() {
 
   color(0);
   if (val != null && val.strip().split("-").length == 2) {
+    println(val.strip().split("-")[0]);
     int x = int(val.strip().split("-")[0]);
     int y = int(val.strip().split("-")[1]);
     posY = int(map(x, 0, 1023, 0, height));
-    posX = int(map(y, 0, 1023, width, 0));
-    line(0, posY, width, posY); //<>//
-    line(posX, 0, posX, height);
-    
+    posX = int(map(y, 0, 1023, width, 0)); //<>//
   }
   
+  line(0, posY, width, posY);
+  line(posX, 0, posX, height);
   
   
   // process sound map -----
@@ -198,6 +203,13 @@ Integer[] checkImageFound(int posX, int posY, int area) {
   for (int i=0; i<img_coord.length; i++) {
     if (abs(img_coord[i][0] - posX) <= area && abs(img_coord[i][1] - posY) <= area) {
       println("found:" + i);
+      
+      try {
+        Path temp = Files.copy(Paths.get(source), Paths.get(dest), StandardCopyOption.REPLACE_EXISTING);
+      } catch (IOException e) {
+          print(e);
+      }
+    
       found_img_ids.add(i);
     }
   }
