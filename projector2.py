@@ -50,6 +50,9 @@ class SeedPhotoEventHandler(FileSystemEventHandler):
             global stepCounter
             stepCounter = 0
 
+            global start_time
+            start_time = perf_counter()
+
 
 def project(
         G,
@@ -115,7 +118,7 @@ def project(
         stepCounter = stepCounter + 0.1
         # Learning rate schedule.
 
-        t = 1/stepCounter
+        t = 1 / stepCounter
         w_noise_scale = w_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
         if constant_learning_rate:
             # Turn off the rampup/rampdown of the learning rate
@@ -179,7 +182,9 @@ def project(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out.repeat([1, G.mapping.num_ws, 1])
+        if ((perf_counter() - start_time) > 15 and lr < 0.01):
+            print("BREAK+++++++\n")
+            break
 
 
 # ----------------------------------------------------------------------------
@@ -187,7 +192,8 @@ def project(
 @click.command()
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--target', 'target_fname', help='Target image file to project to', required=True, metavar='FILE')
-@click.option('--listenerFolder', 'listener_folder', help='folder to save new images into for the display listener', required=True, metavar='FILE')
+@click.option('--listenerFolder', 'listener_folder', help='folder to save new images into for the display listener',
+              required=True, metavar='FILE')
 @click.option('--outdir', help='Where to save the output images', required=True, metavar='DIR')
 @click.option('--constant-lr', 'constant_learning_rate', is_flag=True,
               help='Add flag to use a constant learning rate throughout the optimization (turn off the rampup/rampdown)')
@@ -198,72 +204,74 @@ def run_projection(
         constant_learning_rate: bool,
         listener_folder: str
 ):
-    """Project given image to the latent space of pretrained network pickle.
+    while 1:
+        """Project given image to the latent space of pretrained network pickle.
+    
+        Examples:
+    
+        \b
+        python projector.py --outdir=out --target=~/mytargetimg.png \\
+            --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/ffhq.pkl
+        """
+        # np.random.seed(seed)
+        # torch.manual_seed(seed)
 
-    Examples:
+        # define observer for seed change
+        event_handler = SeedPhotoEventHandler()
+        observer = Observer()
+        observer.schedule(event_handler, listener_folder, recursive=True)
+        observer.start()
 
-    \b
-    python projector.py --outdir=out --target=~/mytargetimg.png \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/ffhq.pkl
-    """
-    # np.random.seed(seed)
-    # torch.manual_seed(seed)
+        # Load networks.
+        print('Loading networks from "%s"...' % network_pkl)
+        global device
+        device = torch.device('cuda')
+        with dnnlib.util.open_url(network_pkl) as fp:
+            global G
+            G = legacy.load_network_pkl(fp)['G_ema'].requires_grad_(False).to(device)  # type: ignore
 
-    # define observer for seed change
-    event_handler = SeedPhotoEventHandler()
-    observer = Observer()
-    observer.schedule(event_handler, listener_folder, recursive=True)
-    observer.start()
+        # Load target image.
+        target_pil = PIL.Image.open(target_fname).convert('RGB')
+        w, h = target_pil.size
+        s = min(w, h)
+        target_pil = target_pil.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
+        target_pil = target_pil.resize((G.img_resolution, G.img_resolution), PIL.Image.LANCZOS)
+        target_uint8 = np.array(target_pil, dtype=np.uint8)
 
-    # Load networks.
-    print('Loading networks from "%s"...' % network_pkl)
-    global device
-    device = torch.device('cuda')
-    with dnnlib.util.open_url(network_pkl) as fp:
-        global G
-        G = legacy.load_network_pkl(fp)['G_ema'].requires_grad_(False).to(device)  # type: ignore
+        # Optimize projection.
+        global start_time
+        start_time = perf_counter()
+        projected_w_steps = project(
+            G,
+            target=torch.tensor(target_uint8.transpose([2, 0, 1]), device=device),  # pylint: disable=not-callable
+            device=device,
+            verbose=True,
+            constant_learning_rate=constant_learning_rate
+        )
+        print(f'Elapsed: {(perf_counter() - start_time):.1f} s')
 
-    # Load target image.
-    target_pil = PIL.Image.open(target_fname).convert('RGB')
-    w, h = target_pil.size
-    s = min(w, h)
-    target_pil = target_pil.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
-    target_pil = target_pil.resize((G.img_resolution, G.img_resolution), PIL.Image.LANCZOS)
-    target_uint8 = np.array(target_pil, dtype=np.uint8)
+        # Render debug output: optional video and projected image and W vector.
+        os.makedirs(outdir, exist_ok=True)
 
-    # Optimize projection.
-    start_time = perf_counter()
-    projected_w_steps = project(
-        G,
-        target=torch.tensor(target_uint8.transpose([2, 0, 1]), device=device),  # pylint: disable=not-callable
-        device=device,
-        verbose=True,
-        constant_learning_rate=constant_learning_rate
-    )
-    print(f'Elapsed: {(perf_counter() - start_time):.1f} s')
+        # Save final projected frame and W vector.
+        # target_pil.save(f'{outdir}/target.png')
+        # projected_w = projected_w_steps[-1]
+        # synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
+        # synth_image = (synth_image + 1) * (255 / 2)
+        # synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
+        # PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/proj.png')
+        # np.savez(f'{outdir}/projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
 
-    # Render debug output: optional video and projected image and W vector.
-    os.makedirs(outdir, exist_ok=True)
-
-    # Save final projected frame and W vector.
-    # target_pil.save(f'{outdir}/target.png')
-    # projected_w = projected_w_steps[-1]
-    # synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
-    # synth_image = (synth_image + 1) * (255 / 2)
-    # synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
-    # PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/proj.png')
-    # np.savez(f'{outdir}/projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
-
-    # moved the video to the end so we can look at images while these videos take time to compile
-    # if save_video:
-    #     video = imageio.get_writer(f'{outdir}/proj.mp4', mode='I', fps=10, codec='libx264', bitrate='16M')
-    #     print (f'Saving optimization progress video "{outdir}/proj.mp4"')
-    #     for projected_w in projected_w_steps:
-    #         synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
-    #         synth_image = (synth_image + 1) * (255/2)
-    #         synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
-    #         video.append_data(np.concatenate([target_uint8, synth_image], axis=1))
-    #     video.close()
+        # moved the video to the end so we can look at images while these videos take time to compile
+        # if save_video:
+        #     video = imageio.get_writer(f'{outdir}/proj.mp4', mode='I', fps=10, codec='libx264', bitrate='16M')
+        #     print (f'Saving optimization progress video "{outdir}/proj.mp4"')
+        #     for projected_w in projected_w_steps:
+        #         synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
+        #         synth_image = (synth_image + 1) * (255/2)
+        #         synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
+        #         video.append_data(np.concatenate([target_uint8, synth_image], axis=1))
+        #     video.close()
 
 
 # ----------------------------------------------------------------------------
