@@ -182,9 +182,11 @@ def project(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-        if ((perf_counter() - start_time) > 15 and lr < 0.01):
+        timePassed = (perf_counter() - start_time)
+        if ((int(perf_counter() % 300) == 0) or (timePassed > 15 and lr < 0.02)):
             print("BREAK+++++++\n")
             break
+        print("timePassed:" + str(perf_counter() % 600) + "\n")
 
 
 # ----------------------------------------------------------------------------
