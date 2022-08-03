@@ -425,3 +425,7 @@ Run below command to initialize infinite loop projector
 ```
 python projector2.py --network=network-snapshot-001292.pkl --outdir=projector/ --target=seed0000.png --listenerFolder=projector/seed
 ```
+
+
+##MOBI
+model used: stylegan2-ffhq-config-f.pkl

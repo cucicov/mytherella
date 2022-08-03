@@ -33,8 +33,8 @@ def main(watch_file):
                         datefmt='%Y-%m-%d %H:%M:%S')
 
     root = Tk()
-    # root.geometry('1200x1200+200+200')
-    root.attributes('-fullscreen', True)
+    root.geometry('1200x1200+200+200')
+    # root.attributes('-fullscreen', True)
     root.title("AB")
     root.configure(background='black')
 
