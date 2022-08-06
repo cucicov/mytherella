@@ -11,6 +11,7 @@
 import copy
 import os
 from time import perf_counter
+from datetime import datetime
 
 import click
 import numpy as np
@@ -20,11 +21,13 @@ import torch.nn.functional as F
 
 import dnnlib
 import legacy
+import time
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 target_features = None
+run_generation = True
 
 
 class SeedPhotoEventHandler(FileSystemEventHandler):
@@ -32,6 +35,7 @@ class SeedPhotoEventHandler(FileSystemEventHandler):
     def on_any_event(self, event):
         if (not event.is_directory) and (event.event_type == 'closed'):
             print('modified: ' + event.src_path)
+            time.sleep(10.0)
             target_pil = PIL.Image.open(event.src_path).convert('RGB')
             w, h = target_pil.size
             s = min(w, h)
@@ -46,6 +50,12 @@ class SeedPhotoEventHandler(FileSystemEventHandler):
                 target_images = F.interpolate(target_images, size=(256, 256), mode='area')
             global target_features
             target_features = vgg16(target_images, resize_images=False, return_lpips=True)
+
+            global run_generation
+            run_generation = True
+
+            global start_time
+            start_time = perf_counter()
 
             global stepCounter
             stepCounter = 0
@@ -111,75 +121,87 @@ def project(
     global stepCounter
     stepCounter = 0
 
+    global run_generation
+
     while 1:
-        stepCounter = stepCounter + 0.1
-        # Learning rate schedule.
+        if run_generation:
+            stepCounter = stepCounter + 0.1
+            # Learning rate schedule.
 
-        t = 1/stepCounter
-        w_noise_scale = w_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
-        if constant_learning_rate:
-            # Turn off the rampup/rampdown of the learning rate
-            lr_ramp = 1.0
-            print('---- constant learning rate ----')
-        else:
-            lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
-            lr_ramp = 0.5 - 0.5 * np.cos(lr_ramp * np.pi)
-            lr_ramp = lr_ramp * min(1.0, t / lr_rampup_length)
-        lr = initial_learning_rate * lr_ramp
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
+            t = 1 / stepCounter
+            w_noise_scale = w_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
+            if constant_learning_rate:
+                # Turn off the rampup/rampdown of the learning rate
+                lr_ramp = 1.0
+                print('---- constant learning rate ----')
+            else:
+                lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
+                lr_ramp = 0.5 - 0.5 * np.cos(lr_ramp * np.pi)
+                lr_ramp = lr_ramp * min(1.0, t / lr_rampup_length)
+            lr = initial_learning_rate * lr_ramp
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
 
-        print("Learning rate: " + str(lr))
+            print("Learning rate: " + str(lr))
 
-        # Synth images from opt_w.
-        w_noise = torch.randn_like(w_opt) * w_noise_scale
-        ws = (w_opt + w_noise).repeat([1, G.mapping.num_ws, 1])
-        synth_images = G.synthesis(ws, noise_mode='const')
+            global start_time
+            if (perf_counter() - start_time) > 10 and lr < 0.09:
+                run_generation = False  # stop generating
 
-        # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        synth_images = (synth_images + 1) * (255 / 2)
-        if synth_images.shape[2] > 256:
-            synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
+            # Synth images from opt_w.
+            w_noise = torch.randn_like(w_opt) * w_noise_scale
+            ws = (w_opt + w_noise).repeat([1, G.mapping.num_ws, 1])
+            synth_images = G.synthesis(ws, noise_mode='const')
 
-        # Features for synth images.
-        synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
-        dist = (target_features - synth_features).square().sum()
+            # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
+            synth_images = (synth_images + 1) * (255 / 2)
+            if synth_images.shape[2] > 256:
+                synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
 
-        # Noise regularization.
-        reg_loss = 0.0
-        for v in noise_bufs.values():
-            noise = v[None, None, :, :]  # must be [1,1,H,W] for F.avg_pool2d()
-            while True:
-                reg_loss += (noise * torch.roll(noise, shifts=1, dims=3)).mean() ** 2
-                reg_loss += (noise * torch.roll(noise, shifts=1, dims=2)).mean() ** 2
-                if noise.shape[2] <= 8:
-                    break
-                noise = F.avg_pool2d(noise, kernel_size=2)
-        loss = dist + reg_loss * regularize_noise_weight
+            # Features for synth images.
+            synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
+            dist = (target_features - synth_features).square().sum()
 
-        # Step
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
-        # logprint(f'step {step + 1:>4d}/{num_steps}: dist {dist:<4.2f} loss {float(loss):<5.2f}')
+            # Noise regularization.
+            reg_loss = 0.0
+            for v in noise_bufs.values():
+                noise = v[None, None, :, :]  # must be [1,1,H,W] for F.avg_pool2d()
+                while True:
+                    reg_loss += (noise * torch.roll(noise, shifts=1, dims=3)).mean() ** 2
+                    reg_loss += (noise * torch.roll(noise, shifts=1, dims=2)).mean() ** 2
+                    if noise.shape[2] <= 8:
+                        break
+                    noise = F.avg_pool2d(noise, kernel_size=2)
+            loss = dist + reg_loss * regularize_noise_weight
 
-        projected_w = w_opt.detach()[0].unsqueeze(0).repeat([1, G.mapping.num_ws, 1])
-        # synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')  # remove unsqueeze?
-        synth_image = G.synthesis(projected_w, noise_mode='const')
-        synth_image = (synth_image + 1) * (255 / 2)
-        synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
-        PIL.Image.fromarray(synth_image, 'RGB').save(f'projector/1.jpg')  # TODO: add variable?
+            # Step
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+            # logprint(f'step {step + 1:>4d}/{num_steps}: dist {dist:<4.2f} loss {float(loss):<5.2f}')
 
-        # Save projected W for each optimization step.
-        # w_out[step] = w_opt.detach()[0]
+            projected_w = w_opt.detach()[0].unsqueeze(0).repeat([1, G.mapping.num_ws, 1])
+            # synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')  # remove unsqueeze?
+            synth_image = G.synthesis(projected_w, noise_mode='const')
+            synth_image = (synth_image + 1) * (255 / 2)
+            synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
+            if not run_generation:
+                dt = datetime.now()
+                ts = datetime.timestamp(dt)
+                PIL.Image.fromarray(synth_image, 'RGB').save(f'projector/' + str(ts) + '.jpg')  # TODO: add variable?
+            else:
+                PIL.Image.fromarray(synth_image, 'RGB').save(f'projector/1.jpg')  # TODO: add variable?
 
-        # Normalize noise.
-        with torch.no_grad():
-            for buf in noise_bufs.values():
-                buf -= buf.mean()
-                buf *= buf.square().mean().rsqrt()
+            # Save projected W for each optimization step.
+            # w_out[step] = w_opt.detach()[0]
 
-    return w_out.repeat([1, G.mapping.num_ws, 1])
+            # Normalize noise.
+            with torch.no_grad():
+                for buf in noise_bufs.values():
+                    buf -= buf.mean()
+                    buf *= buf.square().mean().rsqrt()
+
+    return "ff"
 
 
 # ----------------------------------------------------------------------------
@@ -187,7 +209,8 @@ def project(
 @click.command()
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--target', 'target_fname', help='Target image file to project to', required=True, metavar='FILE')
-@click.option('--listenerFolder', 'listener_folder', help='folder to save new images into for the display listener', required=True, metavar='FILE')
+@click.option('--listenerFolder', 'listener_folder', help='folder to save new images into for the display listener',
+              required=True, metavar='FILE')
 @click.option('--outdir', help='Where to save the output images', required=True, metavar='DIR')
 @click.option('--constant-lr', 'constant_learning_rate', is_flag=True,
               help='Add flag to use a constant learning rate throughout the optimization (turn off the rampup/rampdown)')
@@ -208,7 +231,6 @@ def run_projection(
     """
     # np.random.seed(seed)
     # torch.manual_seed(seed)
-
     # define observer for seed change
     event_handler = SeedPhotoEventHandler()
     observer = Observer()
@@ -232,6 +254,7 @@ def run_projection(
     target_uint8 = np.array(target_pil, dtype=np.uint8)
 
     # Optimize projection.
+    global start_time
     start_time = perf_counter()
     projected_w_steps = project(
         G,
@@ -246,13 +269,13 @@ def run_projection(
     os.makedirs(outdir, exist_ok=True)
 
     # Save final projected frame and W vector.
-    target_pil.save(f'{outdir}/target.png')
-    projected_w = projected_w_steps[-1]
-    synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
-    synth_image = (synth_image + 1) * (255 / 2)
-    synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
-    PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/proj.png')
-    np.savez(f'{outdir}/projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
+    # target_pil.save(f'{outdir}/target.png')
+    # projected_w = projected_w_steps[-1]
+    # synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
+    # synth_image = (synth_image + 1) * (255 / 2)
+    # synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
+    # PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/proj.png')
+    # np.savez(f'{outdir}/projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
 
     # moved the video to the end so we can look at images while these videos take time to compile
     # if save_video:
@@ -269,6 +292,7 @@ def run_projection(
 # ----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    run_projection()  # pylint: disable=no-value-for-parameter
+    while 1:
+        run_projection()  # pylint: disable=no-value-for-parameter
 
 # ----------------------------------------------------------------------------
