@@ -27,7 +27,7 @@ AudioPlayer d8;
 
 AudioPlayer[] sound_mapping = new AudioPlayer[10];
 
-static int IMAGE_FOUND_INI = 5; // this defines the area for finding the image, the smaller the area the harder the game.
+static int IMAGE_FOUND_INI = 10; // this defines the area for finding the image, the smaller the area the harder the game.
 int image_found_counter = IMAGE_FOUND_INI;
 int area_for_image_found = IMAGE_FOUND_INI;
 
@@ -74,7 +74,7 @@ void setup() {
   // is Serial.list()[0].
   // On Windows machines, this generally opens COM1.
   // Open whatever port is the one you're using.
-  //println(Serial.list());
+  println(Serial.list());
   String portName = Serial.list()[0]; //change the 0 to a 1 or 2 etc. to match your port
   myPort = new Serial(this, portName, 9600);
 
