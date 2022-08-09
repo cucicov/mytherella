@@ -18,7 +18,7 @@ class DisplayPhotoEventHandler(FileSystemEventHandler):
         if (not event.is_directory) and (event.event_type == 'closed'):
             print('modified: ' + event.src_path)
             try:
-                local_img = ImageTk.PhotoImage(Image.open(self.watch_file).resize((1000, 1000)))
+                local_img = ImageTk.PhotoImage(Image.open(self.watch_file).resize((1180, 1180)))
                 self.label.configure(image=local_img)
                 self.label.image = local_img
             except KeyboardInterrupt:
