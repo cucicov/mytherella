@@ -428,11 +428,11 @@ python projector2.py --network=network-snapshot-001292.pkl --outdir=projector/ -
 
 
 ## MOBI
-model used: stylegan2-ffhq-config-f.pkl
-
+RUN ORDER:
+python display.py --watch_file projector/1.jpg --watch_directory=projector/
+python faceDetect.py
 python projector2.py --network=stylegan2-ffhq-config-f.pkl --outdir=projector/ --target=portraits/5.png --listenerFolder=projector/seed
 
-python display.py --watch_file=projector/1.jpg
 
 
 __Dependencies__
