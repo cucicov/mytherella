@@ -83,6 +83,11 @@ while True:
                     photo_taken = True
                     img_counter += 1
                     img_name = "portraits/opencv_frame_{}.png".format(img_counter)
+                    # crop_x_top = correct_position_upper_left[0]
+                    # crop_y_top = correct_position_upper_left[1]
+                    # crop_x_bottom = correct_position_bottom_right[0]
+                    # crop_y_bottom = correct_position_bottom_right[1]
+                    # cropped_image = frame[crop_y_top:crop_y_bottom, crop_x_top:crop_x_bottom]
                     cv2.imwrite(img_name, frame)
                     print("{} written!".format(img_name))
                     seed_sent = False
@@ -134,7 +139,7 @@ while True:
         # PHASE FINALE ______________
         # close all windows and proceed to animation.
         if retake_countdown < 0:
-            cv2.destroyAllWindows()
+            cv2.destroyWindow('window2')
             start_time_window_hidden = perf_counter()
             if not seed_sent:
                 shutil.copy(img_name, 'projector/seed/')
