@@ -14,8 +14,8 @@ PImage bg;
 
 Minim minim;
 AudioPlayer noise;
-AudioPlayer fox;
-AudioPlayer wave;
+AudioPlayer d9;
+AudioPlayer d10;
 AudioPlayer d1;
 AudioPlayer d2;
 AudioPlayer d3;
@@ -68,7 +68,7 @@ boolean seedImageFound = false;
 
 void setup() {
   size(1920, 1080);
-  fullScreen();
+  //fullScreen();
   background(255);
   // I know that the first port in the serial list on my mac
   // is Serial.list()[0].
@@ -105,19 +105,21 @@ void setup() {
   seed_images[9] = img9;
   
   minim = new Minim(this);
-  noise = minim.loadFile("noise.mp3", 2048);
-  fox = minim.loadFile("chimes.wav", 2048);
-  wave = minim.loadFile("wave.wav", 2048);
-  d1 = minim.loadFile("1.wav", 2048);
-  d2 = minim.loadFile("2.mp3", 2048);
-  d3 = minim.loadFile("3.wav", 2048);
-  d4 = minim.loadFile("4.wav", 2048);
-  d5 = minim.loadFile("5.wav", 2048);
-  d6 = minim.loadFile("6.wav", 2048);
-  d7 = minim.loadFile("7.mp3", 2048);
-  d8 = minim.loadFile("8.wav", 2048);
-  fox.loop();
-  wave.loop();
+  noise = minim.loadFile("sounds2/idle.wav", 2048);
+  
+  d1 = minim.loadFile("sounds/1.wav");
+  d2 = minim.loadFile("sounds2/2.wav", 2048);
+  d3 = minim.loadFile("sounds2/3.wav", 2048);
+  d4 = minim.loadFile("sounds2/4.wav", 2048);
+  d5 = minim.loadFile("sounds2/5.wav", 2048);
+  d6 = minim.loadFile("sounds2/6.wav", 2048);
+  d7 = minim.loadFile("sounds2/7.wav", 2048);
+  d8 = minim.loadFile("sounds2/8.wav", 2048);
+  d9 = minim.loadFile("sounds2/9.wav", 2048);
+  d10 = minim.loadFile("sounds2/10.wav", 2048);
+  
+  d9.loop();
+  d10.loop();
   noise.loop();
   d1.loop();
   d2.loop();
@@ -129,8 +131,8 @@ void setup() {
   d8.loop();
   noise.setGain(10);
   
-  fox.setGain(-50);
-  wave.setGain(-50);
+  d9.setGain(-50);
+  d10.setGain(-50);
   d1.setGain(-50);
   d2.setGain(-50);
   d3.setGain(-50);
@@ -141,15 +143,15 @@ void setup() {
   d8.setGain(-50);
   
   sound_mapping[0] = d1;
-  sound_mapping[1] = d2;
-  sound_mapping[2] = d3;
-  sound_mapping[3] = d4;
-  sound_mapping[4] = d5;
-  sound_mapping[5] = fox;
-  sound_mapping[6] = d6;
-  sound_mapping[7] = d7;
-  sound_mapping[8] = d8;
-  sound_mapping[9] = wave;
+  sound_mapping[1] = d10;
+  sound_mapping[2] = d6;
+  sound_mapping[3] = d7;
+  sound_mapping[4] = d8;
+  sound_mapping[5] = d9;
+  sound_mapping[6] = d4;
+  sound_mapping[7] = d2;
+  sound_mapping[8] = d3;
+  sound_mapping[9] = d5;
 }
 
 void draw() {
