@@ -2,6 +2,7 @@ import cv2
 import pyshine as ps
 from time import perf_counter
 import shutil
+import os
 
 faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
 
@@ -22,10 +23,17 @@ PORTRAIT_OFFSET_TOLERANCE = 50
 DELAY_TILL_NO_FACE_ACTIVATES = 100
 WAIT_TILL_FEED_DISPLAY_AFTER_FACE_DETECTED = 3  # 3 seconds after face detection before displaying the feed.
 WAIT_TILL_FOR_IMAGE_RETAKE = 5  # 3 seconds after face detection before displaying the feed.
-img_counter = 0
 force_retake_picture = False
 img_name = None
 seed_sent = False
+
+countPortraitFiles = 0
+# Iterate directory
+for path in os.listdir('portraits/'):
+    # check if current path is a file
+    if os.path.isfile(os.path.join('portraits/', path)):
+        countPortraitFiles += 1
+img_counter = countPortraitFiles
 
 # keep looping
 while True:
