@@ -423,5 +423,5 @@ python display.py --watch_file=./projector/1.jpg
 ----
 Run below command to initialize infinite loop projector
 ```
-python projector2.py --network=network-snapshot-001292.pkl --outdir=projector/ --target=seed0000.png --listenerFolder=projector/seed
+python projector2.py --network=network-snapshot-004770.pkl --outdir=projector/ --target=seed0000.png --listenerFolder=projector/seed
 ```

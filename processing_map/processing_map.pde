@@ -27,7 +27,7 @@ AudioPlayer d8;
 
 AudioPlayer[] sound_mapping = new AudioPlayer[10];
 
-static int IMAGE_FOUND_INI = 10; // this defines the area for finding the image, the smaller the area the harder the game.
+static int IMAGE_FOUND_INI = 30; // this defines the area for finding the image, the smaller the area the harder the game.
 int image_found_counter = IMAGE_FOUND_INI;
 int area_for_image_found = IMAGE_FOUND_INI;
 
@@ -78,7 +78,7 @@ void setup() {
   String portName = Serial.list()[0]; //change the 0 to a 1 or 2 etc. to match your port
   myPort = new Serial(this, portName, 9600);
 
-  bg = loadImage("bg.png");
+  bg = loadImage("bg.jpg");
   
   strokeWeight(2);
   stroke(0, 255, 0);
@@ -107,7 +107,7 @@ void setup() {
   minim = new Minim(this);
   noise = minim.loadFile("sounds2/idle.wav", 2048);
   
-  d1 = minim.loadFile("sounds/1.wav");
+  d1 = minim.loadFile("sounds2/1.wav", 2048);
   d2 = minim.loadFile("sounds2/2.wav", 2048);
   d3 = minim.loadFile("sounds2/3.wav", 2048);
   d4 = minim.loadFile("sounds2/4.wav", 2048);
@@ -275,7 +275,7 @@ void draw() {
     img_size = 128;
     
     if (noise.getGain() < 10) {
-      noise.shiftGain(noise.getGain(), 10, 1000);
+      noise.shiftGain(noise.getGain(), 13, 500);
       gainShifting = true;
     } else {
       gainShifting = false;
@@ -318,7 +318,7 @@ void setGlobalGains(Integer[] ids, int gain) {
   }
   
   // turn on found images sounds
-  for (int f: found) { //<>//
+  for (int f: found) { //<>// //<>//
     sound_mapping[f].shiftGain(sound_mapping[f].getGain(), gain, 100);
   }
   
@@ -332,7 +332,7 @@ Integer[] checkImageFound(int posX, int posY, int area) {
   ArrayList<Integer> found_img_ids = new ArrayList<Integer>();
   for (int i=0; i<img_coord.length; i++) {
     if (abs(img_coord[i][0] - posX) <= area && abs(img_coord[i][1] - posY) <= area) {
-      //println("found:" + i); //<>//
+      //println("found:" + i); //<>// //<>//
       found_img_ids.add(i);
     }
   }
